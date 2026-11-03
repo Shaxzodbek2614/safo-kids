@@ -1,36 +1,22 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Safo Kids — web ilova (demo)
 
-## Getting Started
+AppSheet tizimining yangi web versiyasi. Hozircha **demo ma'lumotlar** bilan ishlaydi: barcha ismlar va raqamlar o'ylab topilgan, baza hali ulanmagan. Sahifa yangilansa, kiritilgan o'zgarishlar boshlang'ich holatiga qaytadi.
 
-First, run the development server:
+## Ishga tushirish
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Brauzerda `http://localhost:3000` manzilini oching.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Yuqoridagi **"Demo rol"** tanlovi orqali tizimni turli lavozimlar ko'zi bilan ko'rish mumkin: Admin, Bosh menejer, Administrator+Hisobchi va Ustoz.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Tuzilishi
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/app/(app)/*`: sahifalar (Bosh sahifa, Lidlar, Shartnomalar, To'lovlar, Qarzdorlik, Davomat va boshqalar)
+- `src/lib/data/types.ts`: ma'lumotlar modeli (`docs/TZ.md`, 4-bo'lim)
+- `src/lib/data/seed.ts`: demo ma'lumotlar
+- `src/lib/data/store.ts`: xotiradagi saqlash va amallar. Baza ulanganda shu nomdagi server action'lar bilan almashtiriladi
+- `src/lib/data/calc.ts`: hisob-kitob qoidalari (`docs/TZ.md`, 6-bo'lim)
