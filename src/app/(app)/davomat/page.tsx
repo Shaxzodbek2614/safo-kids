@@ -3,11 +3,43 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Check, CheckCheck, X } from "lucide-react";
-import { markAttendance, useDb } from "@/lib/data/store";
-import { groupRoster, lookups, SCHOOL_DAYS_DESC, studentName, visibleGroups } from "@/lib/data/calc";
-import { cn, date, percent } from "@/lib/format";
-import { Avatar, Button, Card, CardHeader, Empty, PageHeader, Progress } from "@/components/ui";
+import { markAttendance, markStaffAttendance, useDb } from "@/lib/data/store";
+import { canMarkStaff } from "@/lib/data/permissions";
+import { groupRoster, lookups, rateFor, SCHOOL_DAYS_DESC, studentName, visibleGroups } from "@/lib/data/calc";
+import { cn, date, money, percent } from "@/lib/format";
+import { Avatar, Badge, Button, Card, CardHeader, Empty, PageHeader, Progress } from "@/components/ui";
 import { SessionPicker } from "@/components/session-picker";
+
+function MarkButtons({ label, value, onChange }: { label: string; value: "1" | "X" | undefined; onChange: (v: "1" | "X" | null) => void }) {
+  return (
+    <div className="flex gap-2" role="group" aria-label={label}>
+      <button
+        type="button"
+        aria-pressed={value === "1"}
+        onClick={() => onChange(value === "1" ? null : "1")}
+        className={cn(
+          "inline-flex h-11 items-center gap-1.5 rounded-lg border px-3 text-sm font-bold transition-colors sm:px-4",
+          value === "1" ? "border-success bg-success text-white" : "border-border-strong text-muted hover:border-success hover:text-success",
+        )}
+      >
+        <Check size={17} aria-hidden="true" />
+        <span className="hidden sm:inline">Keldi</span>
+      </button>
+      <button
+        type="button"
+        aria-pressed={value === "X"}
+        onClick={() => onChange(value === "X" ? null : "X")}
+        className={cn(
+          "inline-flex h-11 items-center gap-1.5 rounded-lg border px-3 text-sm font-bold transition-colors sm:px-4",
+          value === "X" ? "border-danger bg-danger text-white" : "border-border-strong text-muted hover:border-danger hover:text-danger",
+        )}
+      >
+        <X size={17} aria-hidden="true" />
+        <span className="hidden sm:inline">Kelmadi</span>
+      </button>
+    </div>
+  );
+}
 
 export default function AttendancePage() {
   const sp = Object.fromEntries(useSearchParams());
@@ -24,6 +56,12 @@ export default function AttendancePage() {
   const came = roster.filter((c) => marks.get(c.id) === "1").length;
   const absent = roster.filter((c) => marks.get(c.id) === "X").length;
   const left = roster.length - came - absent;
+
+  const staff = [
+    { user: L.user.get(g.teacherId)!, title: "Ustoz" },
+    ...(g.supporterId ? [{ user: L.user.get(g.supporterId)!, title: "Yordamchi" }] : []),
+  ];
+  const staffMarks = new Map(db.staffAttendance.filter((a) => a.date === day).map((a) => [a.userId, a.status]));
 
   // absences for the side panel
   const recent = SCHOOL_DAYS_DESC.slice(0, 8).map((d) => {
@@ -63,6 +101,37 @@ export default function AttendancePage() {
             </div>
           </Card>
 
+          {canMarkStaff(session.role) && (
+            <Card className="overflow-hidden border-primary/40">
+              <div className="border-b border-primary/20 bg-primary-soft px-4 py-3 sm:px-5">
+                <h2 className="text-sm font-bold text-primary-ink">Tarbiyachilar davomati</h2>
+                <p className="text-xs text-primary-ink/80">Kelgan kuni uchun belgilangan KPI oylikka avtomatik yoziladi</p>
+              </div>
+              <ul className="divide-y divide-border">
+                {staff.map(({ user, title }) => {
+                  const m = staffMarks.get(user.id);
+                  const rate = rateFor(db, user.role, Number(day.slice(0, 4)), Number(day.slice(5, 7)));
+                  return (
+                    <li key={user.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+                      <Avatar name={user.fullName} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="truncate font-semibold">{user.fullName}</span>
+                          <Badge tone={title === "Ustoz" ? "primary" : "info"}>{title}</Badge>
+                        </span>
+                        <span className="block text-xs text-muted">
+                          {m === "1" ? "Keldi" : m === "X" ? "Kelmadi" : "Belgilanmagan"}
+                          {rate?.kind === "KPI" && ` · kuniga ${money(rate.amount)} soʻm`}
+                        </span>
+                      </span>
+                      <MarkButtons label={`${user.fullName} davomati`} value={m} onChange={(v) => markStaffAttendance(g.id, user.id, day, v)} />
+                    </li>
+                  );
+                })}
+              </ul>
+            </Card>
+          )}
+
           <Card>
             <ul className="divide-y divide-border">
               {roster.map((c) => {
@@ -75,32 +144,7 @@ export default function AttendancePage() {
                       <span className="block truncate font-semibold">{name}</span>
                       <span className="block text-xs text-muted">{m === "1" ? "Keldi" : m === "X" ? "Kelmadi" : "Belgilanmagan"}</span>
                     </span>
-                    <div className="flex gap-2" role="group" aria-label={`${name} davomati`}>
-                      <button
-                        type="button"
-                        aria-pressed={m === "1"}
-                        onClick={() => markAttendance(g.id, c.id, day, m === "1" ? null : "1")}
-                        className={cn(
-                          "inline-flex h-11 items-center gap-1.5 rounded-lg border px-3 text-sm font-bold transition-colors sm:px-4",
-                          m === "1" ? "border-success bg-success text-white" : "border-border-strong text-muted hover:border-success hover:text-success",
-                        )}
-                      >
-                        <Check size={17} aria-hidden="true" />
-                        <span className="hidden sm:inline">Keldi</span>
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={m === "X"}
-                        onClick={() => markAttendance(g.id, c.id, day, m === "X" ? null : "X")}
-                        className={cn(
-                          "inline-flex h-11 items-center gap-1.5 rounded-lg border px-3 text-sm font-bold transition-colors sm:px-4",
-                          m === "X" ? "border-danger bg-danger text-white" : "border-border-strong text-muted hover:border-danger hover:text-danger",
-                        )}
-                      >
-                        <X size={17} aria-hidden="true" />
-                        <span className="hidden sm:inline">Kelmadi</span>
-                      </button>
-                    </div>
+                    <MarkButtons label={`${name} davomati`} value={m} onChange={(v) => markAttendance(g.id, c.id, day, v)} />
                   </li>
                 );
               })}

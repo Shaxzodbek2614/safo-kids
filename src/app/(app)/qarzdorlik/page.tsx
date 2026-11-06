@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Phone } from "lucide-react";
 import { useDb } from "@/lib/data/store";
+import { paymentCashTypes } from "@/lib/data/permissions";
 import { branchScope, contractStatus, financeIndex, groupLabel, lookups, studentName, THIS_MONTH } from "@/lib/data/calc";
 import { MONTHS, money, phone } from "@/lib/format";
 import { Badge, Card, Empty, LinkButton, PageHeader, SearchInput, Table, Tabs, Td, Th } from "@/components/ui";
@@ -100,9 +101,11 @@ export default function DebtsPage() {
                       <a href={`tel:+998${c.fatherPhone}`} aria-label={`${c.fatherName}ga qoʻngʻiroq`} className="inline-flex size-9 items-center justify-center rounded-lg border border-border text-primary hover:bg-primary-soft">
                         <Phone size={16} aria-hidden="true" />
                       </a>
-                      <LinkButton href={`/tolovlar?yangi=1&shartnoma=${c.id}`} size="sm" variant="secondary">
-                        Toʻlov
-                      </LinkButton>
+                      {paymentCashTypes(session.role).length > 0 && (
+                        <LinkButton href={`/tolovlar?yangi=1&shartnoma=${c.id}`} size="sm" variant="secondary">
+                          Toʻlov
+                        </LinkButton>
+                      )}
                     </div>
                   </Td>
                 </tr>

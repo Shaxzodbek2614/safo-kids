@@ -59,6 +59,8 @@ export default function ProfitPage() {
         </div>
       </Card>
 
+      {branches.length < db.branches.length && <p className="mb-4 rounded-lg bg-info-soft px-3 py-2 text-[13px] text-info">Filial tanlanmasdan kiritilgan xarajatlar faqat barcha filiallar tanlanganda hisobga olinadi.</p>}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Toʻlovlar" value={money(p.income)} tone="success" />
         <Stat label="Xarajatlar" value={money(p.expense)} />

@@ -3,11 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { FileSignature, MessageSquare, Phone, Plus } from "lucide-react";
-import { addLead, addLeadComment, createContractFromLead, setLeadStatus, useDb } from "@/lib/data/store";
+import { addLead, addLeadComment, createContractFromLead, setLeadCertificate, setLeadStatus, useDb } from "@/lib/data/store";
 import { branchScope, groupLabel, lookups, studentName, TODAY } from "@/lib/data/calc";
 import { ADDRESSES, LEAD_STATUSES, type Lead, type LeadStatus } from "@/lib/data/types";
 import { cn, date, phone } from "@/lib/format";
-import { Badge, Button, Card, Empty, Field, Input, Modal, PageHeader, SearchInput, Select, Table, Tabs, Td, Textarea, Th, type Tone } from "@/components/ui";
+import { Badge, Button, Card, CertificatePreview, Empty, Field, Input, Modal, PageHeader, SearchInput, Select, Table, Tabs, Td, Textarea, Th, type Tone } from "@/components/ui";
 
 const STATUS_TONE: Record<string, Tone> = { "1": "accent", "2": "info", "3": "primary", "4": "primary", "5": "success", "6": "neutral", "7": "neutral" };
 const leadTone = (s: LeadStatus) => STATUS_TONE[s[0]];
@@ -17,22 +17,19 @@ export default function LeadsPage() {
   const scope = branchScope(db, session);
   const L = lookups(db);
   const [q, setQ] = useState("");
-  const [tab, setTab] = useState<string>("open");
+  const [tab, setTab] = useState<string>("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
   const all = db.leads.filter((l) => scope.includes(l.branchId));
   const counts = useMemo(() => {
-    const c: Record<string, number> = { open: 0, all: all.length };
-    for (const l of all) {
-      c[l.status[0]] = (c[l.status[0]] ?? 0) + 1;
-      if (!["5", "6", "7"].includes(l.status[0])) c.open++;
-    }
+    const c: Record<string, number> = { all: all.length };
+    for (const l of all) c[l.status[0]] = (c[l.status[0]] ?? 0) + 1;
     return c;
   }, [all]);
 
   const rows = all
-    .filter((l) => (tab === "all" ? true : tab === "open" ? !["5", "6", "7"].includes(l.status[0]) : l.status[0] === tab))
+    .filter((l) => tab === "all" || l.status[0] === tab)
     .filter((l) => {
       if (!q) return true;
       const hay = `${studentName(L, l.studentId)} ${l.fatherName} ${l.motherName} ${l.fatherPhone} ${l.address}`.toLowerCase();
@@ -59,9 +56,8 @@ export default function LeadsPage() {
         value={tab}
         onChange={setTab}
         items={[
-          { value: "open", label: "Jarayonda", count: counts.open },
-          ...LEAD_STATUSES.map((s) => ({ value: s[0], label: s.slice(3), count: counts[s[0]] ?? 0 })),
           { value: "all", label: "Hammasi", count: counts.all },
+          ...LEAD_STATUSES.map((s) => ({ value: s[0], label: s.slice(3), count: counts[s[0]] ?? 0 })),
         ]}
       />
 
@@ -125,10 +121,26 @@ function LeadDetail({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const L = lookups(db);
   const router = useRouter();
   const [note, setNote] = useState("");
+  const [needsCertificate, setNeedsCertificate] = useState(false);
   const comments = db.leadComments.filter((c) => c.leadId === lead.id);
   const contract = db.contracts.find((c) => c.studentId === lead.studentId);
   const groups = db.groups.filter((g) => g.branchId === lead.branchId && g.status !== "Nofaol");
   const needsGroup = ["3", "4", "5"].includes(lead.status[0]);
+  const STARTED = LEAD_STATUSES[4];
+  const changeStatus = (s: LeadStatus) => {
+    // The birth certificate is mandatory before a child can start.
+    if (s === STARTED && !lead.certificate && !contract) return setNeedsCertificate(true);
+    setNeedsCertificate(false);
+    setLeadStatus(lead.id, s);
+  };
+  const upload = (file: File | undefined) => {
+    if (!file) return;
+    setLeadCertificate(lead.id, { name: file.name, url: URL.createObjectURL(file), isImage: file.type.startsWith("image/") });
+    if (needsCertificate) {
+      setLeadStatus(lead.id, STARTED);
+      setNeedsCertificate(false);
+    }
+  };
 
   return (
     <Modal
@@ -143,7 +155,7 @@ function LeadDetail({ lead, onClose }: { lead: Lead; onClose: () => void }) {
           </Button>
         ) : lead.status.startsWith("5") ? (
           <Button
-            disabled={!lead.groupId}
+            disabled={!lead.groupId || !lead.certificate}
             onClick={() => {
               const id = createContractFromLead(lead.id);
               if (id) router.push(`/shartnomalar/korish?id=${id}`);
@@ -162,13 +174,21 @@ function LeadDetail({ lead, onClose }: { lead: Lead; onClose: () => void }) {
         <div className="flex flex-col gap-4">
           <Field label="Status">
             {(id) => (
-              <Select id={id} value={lead.status} onChange={(e) => setLeadStatus(lead.id, e.target.value as LeadStatus)}>
+              <Select id={id} value={lead.status} onChange={(e) => changeStatus(e.target.value as LeadStatus)}>
                 {LEAD_STATUSES.map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </Select>
             )}
           </Field>
+          {(needsCertificate || (lead.status === STARTED && !contract)) && (
+            <div className={cn("flex flex-col gap-3 rounded-xl border p-4", lead.certificate ? "border-border" : "border-warning/40 bg-warning-soft")}>
+              <Field label="Tugʻilganlik guvohnomasi (metrika)" hint={lead.certificate ? undefined : "“Oʻqishni boshladi” statusi uchun metrikani yuklash majburiy"}>
+                {(id) => <input id={id} type="file" accept="image/*,application/pdf" onChange={(e) => upload(e.target.files?.[0])} className="text-sm file:mr-3 file:h-9 file:rounded-lg file:border file:border-border-strong file:bg-surface file:px-3 file:text-sm file:font-semibold" />}
+              </Field>
+              {lead.certificate && <CertificatePreview file={lead.certificate} />}
+            </div>
+          )}
           {needsGroup && (
             <Field label="Guruh" hint={lead.status.startsWith("5") && !lead.groupId ? "Shartnoma tuzish uchun guruh tanlang" : undefined}>
               {(id) => (
@@ -278,7 +298,7 @@ function NewLead({ open, onClose }: { open: boolean; onClose: () => void }) {
             onClick={() => {
               addLead(
                 { branchId: f.branchId, firstName: f.first, lastName: f.last, parentName: "", gender: f.gender as "Erkak", birthDate: "" },
-                { branchId: f.branchId, sourceId: f.source, status: f.status, groupId: null, address: f.address, ageGroup: Number(f.age), fatherName: f.father, motherName: f.mother, fatherPhone: f.fphone, motherPhone: f.mphone, demoDate: null, createdBy: session.userId },
+                { branchId: f.branchId, sourceId: f.source, status: f.status, groupId: null, address: f.address, ageGroup: Number(f.age), fatherName: f.father, motherName: f.mother, fatherPhone: f.fphone, motherPhone: f.mphone, demoDate: null, certificate: null, createdBy: session.userId },
               );
               setF(empty);
               onClose();

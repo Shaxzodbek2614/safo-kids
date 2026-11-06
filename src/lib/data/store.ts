@@ -10,6 +10,7 @@ import type {
   CashFlow,
   Contract,
   Expense,
+  FileRef,
   Grade,
   GradeMark,
   Lead,
@@ -17,6 +18,7 @@ import type {
   Payment,
   Role,
   SalaryPayment,
+  SalaryRate,
   Student,
   Transfer,
   User,
@@ -45,10 +47,13 @@ export const db = {
   cashFlows: clone(seed.cashFlows),
   salaryAssignments: clone(seed.salaryAssignments),
   salaryPayments: clone(seed.salaryPayments),
+  salaryRates: clone(seed.salaryRates),
+  staffAttendance: clone(seed.staffAttendance),
   attendance: clone(seed.attendance),
   grades: clone(seed.grades),
   coursePrices: clone(seed.coursePrices),
   lessonDays: clone(seed.lessonDays),
+  telegramReport: { weekday: 5, time: "18:00", recipients: ["Metodist", "Bosh menejer", "Guruh ustozi"] as string[] },
 };
 export type DB = typeof db;
 
@@ -123,6 +128,18 @@ export function addPayment(p: Omit<Payment, "id" | "createdAt" | "discountStatus
   emit();
 }
 
+export function updatePayment(id: string, patch: Partial<Pick<Payment, "amount" | "date" | "cashType" | "accountId" | "comment">>) {
+  const p = db.payments.find((x) => x.id === id);
+  if (p) Object.assign(p, patch);
+  emit();
+}
+
+export function deletePayment(id: string) {
+  const i = db.payments.findIndex((x) => x.id === id);
+  if (i >= 0) db.payments.splice(i, 1);
+  emit();
+}
+
 export function confirmPayment(id: string, what: "discount" | "noncash") {
   const p = db.payments.find((x) => x.id === id);
   if (!p) return;
@@ -170,6 +187,12 @@ export function addLead(student: Omit<Student, "id">, lead: Omit<Lead, "id" | "s
   emit();
 }
 
+export function setLeadCertificate(id: string, file: FileRef) {
+  const l = db.leads.find((x) => x.id === id);
+  if (l) l.certificate = file;
+  emit();
+}
+
 export function setLeadStatus(id: string, status: LeadStatus, groupId?: string | null) {
   const l = db.leads.find((x) => x.id === id);
   if (!l) return;
@@ -186,7 +209,7 @@ export function addLeadComment(leadId: string, text: string, userId: string) {
 /** "Shartnoma tuzish" from a lead (TZ 5.1) — returns the new contract id */
 export function createContractFromLead(leadId: string): string | null {
   const l = db.leads.find((x) => x.id === leadId);
-  if (!l || !l.groupId) return null;
+  if (!l || !l.groupId || !l.certificate) return null;
   const existing = db.contracts.find((c) => c.studentId === l.studentId);
   if (existing) return existing.id;
   const number = Math.max(0, ...db.contracts.filter((c) => c.branchId === l.branchId).map((c) => c.number)) + 1;
@@ -205,7 +228,8 @@ export function createContractFromLead(leadId: string): string | null {
     fatherPhone: l.fatherPhone,
     motherPhone: l.motherPhone,
     address: l.address,
-    hasCertificate: false,
+    hasCertificate: true,
+    certificate: l.certificate,
     createdAt: today(),
   };
   db.contracts.unshift(c);
@@ -222,6 +246,26 @@ export function markAttendance(groupId: string, contractId: string, date: string
     if (i >= 0) db.attendance.splice(i, 1);
   } else if (i >= 0) db.attendance[i] = { ...db.attendance[i], status };
   else db.attendance.push({ id: newId("a"), groupId, contractId, date, status });
+  emit();
+}
+
+export function markStaffAttendance(groupId: string, userId: string, date: string, status: "1" | "X" | null) {
+  const i = db.staffAttendance.findIndex((a) => a.userId === userId && a.date === date);
+  if (status === null) {
+    if (i >= 0) db.staffAttendance.splice(i, 1);
+  } else if (i >= 0) db.staffAttendance[i] = { ...db.staffAttendance[i], status };
+  else db.staffAttendance.push({ id: newId("sta"), groupId, userId, date, status });
+  emit();
+}
+
+/** A new rate applies from the current month; earlier months keep the old one. */
+export function setSalaryRate(role: Role, kind: SalaryRate["kind"], amount: number) {
+  db.salaryRates.push({ id: newId("rt"), role, kind, amount, fromYear: seed.THIS_YEAR, fromMonth: seed.THIS_MONTH });
+  emit();
+}
+
+export function setTelegramReport(patch: Partial<DB["telegramReport"]>) {
+  Object.assign(db.telegramReport, patch);
   emit();
 }
 

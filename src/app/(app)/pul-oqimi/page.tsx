@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { ArrowRight, Plus } from "lucide-react";
 import { addCashFlow, addTransfer, useDb } from "@/lib/data/store";
+import { canSeeExternalFlow, canSeeInternalFlow } from "@/lib/data/permissions";
 import { creditorBalance, lookups, seesAllBranches, TODAY } from "@/lib/data/calc";
 import { cn, date, money } from "@/lib/format";
-import { Badge, Button, Card, CardHeader, Field, Input, Modal, PageHeader, Select, Table, Tabs, Td, Textarea, Th } from "@/components/ui";
+import { Badge, Button, Card, CardHeader, Empty, Field, Input, Modal, PageHeader, Select, Table, Tabs, Td, Textarea, Th } from "@/components/ui";
 
 export default function CashFlowPage() {
   const { db, session } = useDb();
@@ -16,6 +17,8 @@ export default function CashFlowPage() {
 
   const mine = (id: string) => top || (L.account.get(id)?.responsibles.includes(session.userId) ?? false);
   const transfers = db.transfers.filter((t) => mine(t.fromAccountId) || mine(t.toAccountId)).sort((a, b) => b.date.localeCompare(a.date));
+  const showExternal = canSeeExternalFlow(session.role);
+  if (!canSeeInternalFlow(session.role)) return <Empty title="Bu boʻlim sizga koʻrinmaydi" />;
 
   return (
     <>
@@ -24,11 +27,11 @@ export default function CashFlowPage() {
         subtitle="Kassalar orasidagi oʻtkazmalar va tashqi qarzlar"
         actions={
           <Button onClick={() => setAdding(true)}>
-            <Plus size={16} aria-hidden="true" /> {tab === "internal" ? "Oʻtkazma" : "Yozuv qoʻshish"}
+            <Plus size={16} aria-hidden="true" /> {tab === "internal" || !showExternal ? "Oʻtkazma" : "Yozuv qoʻshish"}
           </Button>
         }
       />
-      {top && (
+      {showExternal && (
         <Tabs
           className="mb-4"
           value={tab}
@@ -40,7 +43,7 @@ export default function CashFlowPage() {
         />
       )}
 
-      {tab === "internal" ? (
+      {tab === "internal" || !showExternal ? (
         <Card>
           <Table>
             <thead>
@@ -127,7 +130,7 @@ export default function CashFlowPage() {
         </div>
       )}
 
-      {tab === "internal" ? <NewTransfer open={adding} onClose={() => setAdding(false)} /> : <NewCashFlow open={adding} onClose={() => setAdding(false)} />}
+      {tab === "internal" || !showExternal ? <NewTransfer open={adding} onClose={() => setAdding(false)} /> : <NewCashFlow open={adding} onClose={() => setAdding(false)} />}
     </>
   );
 }

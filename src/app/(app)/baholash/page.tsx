@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { markGrade, useDb } from "@/lib/data/store";
-import { branchScope, groupRoster, lookups, SCHOOL_DAYS_DESC, studentName, visibleGroups } from "@/lib/data/calc";
+import { branchScope, gradePeriods, gradeStats, groupRoster, lookups, SCHOOL_DAYS_DESC, studentName, visibleGroups, type GradePeriod } from "@/lib/data/calc";
 import type { GradeMark } from "@/lib/data/types";
-import { cn } from "@/lib/format";
-import { Card, CardHeader, Empty, PageHeader, Table, Td, Th } from "@/components/ui";
+import { cn, percent } from "@/lib/format";
+import { Card, CardHeader, Empty, PageHeader, Table, Tabs, Td, Th } from "@/components/ui";
 import { SessionPicker } from "@/components/session-picker";
 
 const MARKS: { m: GradeMark; short: string; on: string }[] = [
@@ -14,6 +15,82 @@ const MARKS: { m: GradeMark; short: string; on: string }[] = [
   { m: "Topshirolmadi", short: "✗", on: "border-danger bg-danger text-white" },
   { m: "Kelmadi", short: "—", on: "border-subtle bg-subtle text-white" },
 ];
+
+function GroupResults({ groupId, groupName, day }: { groupId: string; groupName: string; day: string }) {
+  const { db } = useDb();
+  const [field, setField] = useState<"habit" | "poem">("habit");
+  const [period, setPeriod] = useState<GradePeriod>("week");
+  const p = gradePeriods(day, period);
+  const cur = gradeStats(db, groupId, field, p.cur);
+  const prev = gradeStats(db, groupId, field, p.prev);
+  const delta = cur.rate !== null && prev.rate !== null ? Math.round(cur.rate * 100) - Math.round(prev.rate * 100) : null;
+  const Arrow = delta === null || delta === 0 ? ArrowRight : delta > 0 ? ArrowUpRight : ArrowDownRight;
+
+  return (
+    <Card className="mb-6">
+      <CardHeader
+        title={`${groupName} — natijalar`}
+        subtitle={period === "week" ? "Tanlangan sana haftasi" : "Tanlangan sana oyi"}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Tabs
+              value={field}
+              onChange={setField}
+              items={[
+                { value: "habit", label: "Odat" },
+                { value: "poem", label: "Sheʼr" },
+              ]}
+            />
+            <Tabs
+              value={period}
+              onChange={setPeriod}
+              items={[
+                { value: "week", label: "Hafta" },
+                { value: "month", label: "Oy" },
+              ]}
+            />
+          </div>
+        }
+      />
+      <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
+        <div className="flex items-end gap-6 sm:gap-8">
+          <div>
+            <p className="num text-5xl font-extrabold leading-none text-success">{cur.ok}</p>
+            <p className="mt-2 text-sm font-semibold text-success">topshirdi</p>
+          </div>
+          <div>
+            <p className="num text-2xl font-extrabold leading-none text-danger">{cur.no}</p>
+            <p className="mt-2 text-[13px] font-semibold text-danger">topshira olmadi</p>
+          </div>
+          <div>
+            <p className="num text-2xl font-bold leading-none text-muted">{cur.absent}</p>
+            <p className="mt-2 text-[13px] font-semibold text-muted">kelmadi</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface-2 p-4">
+          <div>
+            <p className="text-xs font-semibold text-muted">{p.prevLabel}</p>
+            <p className="num text-xl font-bold text-muted">{prev.rate === null ? "—" : percent(prev.rate)}</p>
+            <p className="num text-xs text-muted">
+              {prev.ok} / {prev.ok + prev.no} ta
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-muted">{p.curLabel}</p>
+            <p className="num text-3xl font-extrabold">{cur.rate === null ? "—" : percent(cur.rate)}</p>
+            <p className="num text-xs text-muted">
+              {cur.ok} / {cur.ok + cur.no} ta
+            </p>
+          </div>
+          <p className={cn("flex items-center gap-1 text-sm font-bold", delta === null || delta === 0 ? "text-muted" : delta > 0 ? "text-success" : "text-danger")}>
+            <Arrow size={18} aria-hidden="true" />
+            {delta === null ? "Maʼlumot yoʻq" : delta === 0 ? "Oʻzgarmadi" : `${Math.abs(delta)}% ${delta > 0 ? "oʻsish" : "pasayish"}`}
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export default function GradesPage() {
   const sp = Object.fromEntries(useSearchParams());
@@ -61,6 +138,7 @@ export default function GradesPage() {
       <Card className="mb-6 p-4 sm:p-5">
         <SessionPicker groupId={g.id} day={day} onGroup={setGroupId} onDay={setDay} />
       </Card>
+      <GroupResults groupId={g.id} groupName={g.name} day={day} />
       <Card className="mb-6">
         <Table>
           <thead>

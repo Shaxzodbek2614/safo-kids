@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, Baby, CalendarCheck, HandCoins, TrendingUp } from "lucide-react";
 import { useDb } from "@/lib/data/store";
+import { canSeeInternalFlow, paymentCashTypes } from "@/lib/data/permissions";
 import {
   branchScope,
   contractStatus,
@@ -16,9 +17,8 @@ import {
   TODAY,
   visibleGroups,
 } from "@/lib/data/calc";
-import { MONTHS, MONTHS_SHORT, cn, date, money, moneyShort, percent } from "@/lib/format";
+import { MONTHS, cn, date, money, moneyShort, percent } from "@/lib/format";
 import { Badge, Card, CardHeader, LinkButton, PageHeader, Progress, Stat, Table, Td, Th } from "@/components/ui";
-import { ColumnChart } from "@/components/charts";
 
 export default function DashboardPage() {
   const { db, session } = useDb();
@@ -38,15 +38,10 @@ export default function DashboardPage() {
   const att = db.attendance.filter((a) => a.date === lastDay && scope.includes(L.group.get(a.groupId)!.branchId));
   const attRate = att.length ? att.filter((a) => a.status === "1").length / att.length : 0;
 
-  const chart = Array.from({ length: THIS_MONTH }, (_, i) => {
-    const p = profit(db, scope, THIS_YEAR, i + 1);
-    return { label: MONTHS_SHORT[i], income: p.income, out: p.expense + p.salary };
-  });
-
   const pending =
     db.payments.filter((p) => scope.includes(p.branchId) && (p.discountStatus === "Tasdiqlashga" || p.nonCashStatus === "Tasdiqlashga")).length +
     db.charges.filter((c) => scope.includes(c.branchId) && c.discountStatus === "Tasdiqlashga").length +
-    db.transfers.filter((t) => t.status === "Tasdiqlashga").length;
+    (canSeeInternalFlow(session.role) ? db.transfers.filter((t) => t.status === "Tasdiqlashga").length : 0);
 
   const newLeads = db.leads
     .filter((l) => scope.includes(l.branchId) && !l.status.startsWith("5"))
@@ -63,7 +58,7 @@ export default function DashboardPage() {
             <LinkButton href="/lidlar" variant="secondary">
               Yangi lid
             </LinkButton>
-            <LinkButton href="/tolovlar?yangi=1">Toʻlov qabul qilish</LinkButton>
+            {paymentCashTypes(session.role).length > 0 && <LinkButton href="/tolovlar?yangi=1">Toʻlov qabul qilish</LinkButton>}
           </>
         }
       />
@@ -79,53 +74,6 @@ export default function DashboardPage() {
         />
         <Stat label="Shu oy qarzdorlik" value={moneyShort(monthDebt)} hint={`Umumiy qarz: ${moneyShort(totalDebt)}`} tone="danger" icon={<HandCoins size={18} aria-hidden="true" />} />
         <Stat label="Davomat" value={percent(attRate)} hint={`${date(lastDay)} · ${att.filter((a) => a.status === "X").length} ta kelmagan`} tone="info" icon={<CalendarCheck size={18} aria-hidden="true" />} />
-      </div>
-
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader title="Tushum va chiqim" subtitle={`${THIS_YEAR}-yil, oylar boʻyicha (chiqim = xarajat + oylik)`} />
-          <div className="p-5">
-            <ColumnChart
-              label="Oylar boʻyicha tushum va chiqim"
-              data={chart}
-              series={[
-                { key: "income", label: "Tushum", color: "var(--chart-1)" },
-                { key: "out", label: "Chiqim", color: "var(--chart-2)" },
-              ]}
-            />
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader
-            title="Tasdiqlash kutmoqda"
-            action={pending > 0 && <Badge tone="warning">{pending} ta</Badge>}
-          />
-          <div className="flex flex-col gap-3 p-5">
-            <p className="text-sm text-muted">Chegirmalar, naqdsiz toʻlovlar va kassalar orasidagi oʻtkazmalar tasdiqni kutyapti.</p>
-            {(session.role === "Admin" || session.role === "Bosh menejer") && (
-              <LinkButton href="/tasdiqlashlar" variant="secondary" className="self-start">
-                Koʻrib chiqish <ArrowRight size={16} aria-hidden="true" />
-              </LinkButton>
-            )}
-            <div className="mt-2 border-t border-border pt-4">
-              <p className="mb-3 text-[13px] font-bold">Yangi lidlar</p>
-              <ul className="flex flex-col gap-3">
-                {newLeads.map((l) => (
-                  <li key={l.id} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="min-w-0">
-                      <span className="block truncate font-semibold">{studentName(L, l.studentId)}</span>
-                      <span className="block text-xs text-muted">
-                        {L.branch.get(l.branchId)?.name} · {date(l.createdAt)}
-                      </span>
-                    </span>
-                    <Badge tone={l.status.startsWith("3") ? "info" : l.status.startsWith("6") || l.status.startsWith("7") ? "neutral" : "accent"}>{l.status.slice(3)}</Badge>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </Card>
       </div>
 
       <Card className="mt-6">
@@ -169,6 +117,36 @@ export default function DashboardPage() {
           </tbody>
         </Table>
       </Card>
+
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card className="self-start">
+          <CardHeader title="Tasdiqlash kutmoqda" action={pending > 0 && <Badge tone="warning">{pending} ta</Badge>} />
+          <div className="flex flex-col gap-3 p-5">
+            <p className="text-sm text-muted">Chegirmalar, naqdsiz toʻlovlar va kassalar orasidagi oʻtkazmalar tasdiqni kutyapti.</p>
+            {(session.role === "Admin" || session.role === "Bosh menejer") && (
+              <LinkButton href="/tasdiqlashlar" variant="secondary" className="self-start">
+                Koʻrib chiqish <ArrowRight size={16} aria-hidden="true" />
+              </LinkButton>
+            )}
+          </div>
+        </Card>
+        <Card>
+          <CardHeader title="Yangi lidlar" />
+          <ul className="flex flex-col gap-3 p-5">
+            {newLeads.map((l) => (
+              <li key={l.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold">{studentName(L, l.studentId)}</span>
+                  <span className="block text-xs text-muted">
+                    {L.branch.get(l.branchId)?.name} · {date(l.createdAt)}
+                  </span>
+                </span>
+                <Badge tone={l.status.startsWith("3") ? "info" : l.status.startsWith("6") || l.status.startsWith("7") ? "neutral" : "accent"}>{l.status.slice(3)}</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
     </>
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 import { confirmChargeDiscount, confirmPayment, confirmTransfer, useDb } from "@/lib/data/store";
 import { branchScope, lookups, studentName } from "@/lib/data/calc";
+import { canSeeInternalFlow } from "@/lib/data/permissions";
 import { CASH_LABEL } from "@/lib/data/types";
 import { MONTHS, date, money } from "@/lib/format";
 import { Button, Card, Empty, PageHeader, Table, Tabs, Td, Th } from "@/components/ui";
@@ -18,6 +19,7 @@ export default function ApprovalsPage() {
   const payDiscounts = db.payments.filter((p) => scope.includes(p.branchId) && p.discountStatus === "Tasdiqlashga");
   const noncash = db.payments.filter((p) => scope.includes(p.branchId) && p.nonCashStatus === "Tasdiqlashga");
   const transfers = db.transfers.filter((t) => t.status === "Tasdiqlashga");
+  const showTransfers = canSeeInternalFlow(session.role);
 
   const ConfirmBtn = ({ onClick }: { onClick: () => void }) => (
     <Button size="sm" variant="success" onClick={onClick}>
@@ -35,7 +37,7 @@ export default function ApprovalsPage() {
         items={[
           { value: "discounts", label: "Chegirmalar", count: chargeDiscounts.length + payDiscounts.length },
           { value: "noncash", label: "Naqdsiz toʻlovlar", count: noncash.length },
-          { value: "transfers", label: "Oʻtkazmalar", count: transfers.length },
+          ...(showTransfers ? [{ value: "transfers" as const, label: "Oʻtkazmalar", count: transfers.length }] : []),
         ]}
       />
       <Card>
@@ -100,6 +102,7 @@ export default function ApprovalsPage() {
                   <Th right>Summa</Th>
                   <Th>Pul shakli</Th>
                   <Th>Hisob</Th>
+                  <Th>Izoh</Th>
                   <Th>Qabul qildi</Th>
                   <Th />
                 </tr>
@@ -114,6 +117,7 @@ export default function ApprovalsPage() {
                     </Td>
                     <Td>{CASH_LABEL[p.cashType]}</Td>
                     <Td>{L.account.get(p.accountId)?.name}</Td>
+                    <Td className="min-w-56 whitespace-normal font-medium">{p.comment ?? <span className="text-subtle">Izoh yoʻq</span>}</Td>
                     <Td className="text-muted">{L.user.get(p.accountantId)?.fullName}</Td>
                     <Td className="text-right">
                       <ConfirmBtn onClick={() => confirmPayment(p.id, "noncash")} />
@@ -124,6 +128,7 @@ export default function ApprovalsPage() {
             </Table>
           ))}
         {tab === "transfers" &&
+          showTransfers &&
           (transfers.length === 0 ? (
             <Empty title="Hammasi tasdiqlangan" />
           ) : (

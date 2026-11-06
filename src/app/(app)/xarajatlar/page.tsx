@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { addExpense, useDb } from "@/lib/data/store";
-import { branchScope, lookups, seesAllBranches, THIS_MONTH, THIS_YEAR, TODAY } from "@/lib/data/calc";
+import { branchScope, lookups, THIS_MONTH, THIS_YEAR, TODAY } from "@/lib/data/calc";
 import { CASH_LABEL, type CashType } from "@/lib/data/types";
 import { MONTHS, date, money } from "@/lib/format";
 import { Button, Card, CardHeader, Field, Input, Modal, PageHeader, Progress, Select, Table, Td, Textarea, Th } from "@/components/ui";
@@ -16,7 +16,7 @@ export default function ExpensesPage() {
   const [adding, setAdding] = useState(false);
 
   const rows = db.expenses
-    .filter((e) => scope.includes(e.branchId) && e.date.startsWith(`${THIS_YEAR}-${String(month).padStart(2, "0")}`))
+    .filter((e) => (e.branchId === null || scope.includes(e.branchId)) && e.date.startsWith(`${THIS_YEAR}-${String(month).padStart(2, "0")}`))
     .sort((a, b) => b.date.localeCompare(a.date));
   const total = rows.reduce((s, e) => s + e.quantity * e.unitPrice, 0);
   const byCat = db.expenseCategories
@@ -28,7 +28,7 @@ export default function ExpensesPage() {
     <>
       <PageHeader
         title="Xarajatlar"
-        subtitle="Filiallar xarajatlari, kategoriya boʻyicha"
+        subtitle="Naqd xarajatlar Bosh hisobdan, karta xarajatlari karta hisobidan yechiladi"
         actions={
           <Button onClick={() => setAdding(true)}>
             <Plus size={16} aria-hidden="true" /> Xarajat qoʻshish
@@ -58,7 +58,6 @@ export default function ExpensesPage() {
                 <Th>Sana</Th>
                 <Th>Nomi</Th>
                 <Th>Kategoriya</Th>
-                <Th>Filial</Th>
                 <Th right>Soni</Th>
                 <Th right>Narxi</Th>
                 <Th right>Jami</Th>
@@ -71,13 +70,12 @@ export default function ExpensesPage() {
                   <Td className="text-muted">{date(e.date)}</Td>
                   <Td className="font-semibold">{e.name}</Td>
                   <Td>{L.category.get(e.categoryId)?.name}</Td>
-                  <Td>{L.branch.get(e.branchId)?.name}</Td>
                   <Td right>{e.quantity}</Td>
                   <Td right>{money(e.unitPrice)}</Td>
                   <Td right className="font-semibold">
                     {money(e.quantity * e.unitPrice)}
                   </Td>
-                  <Td className="text-muted">{CASH_LABEL[e.cashType]}</Td>
+                  <Td className="text-muted">{L.account.get(e.accountId)?.name}</Td>
                 </tr>
               ))}
             </tbody>
@@ -104,11 +102,11 @@ export default function ExpensesPage() {
 }
 
 function NewExpense({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { db, session } = useDb();
-  const scope = branchScope(db, session);
-  const [f, setF] = useState({ branchId: scope[0] ?? "", categoryId: db.expenseCategories[0].id, name: "", quantity: "1", unitPrice: "", cashType: "Cash" as CashType, comment: "" });
+  const { db } = useDb();
+  const [f, setF] = useState({ categoryId: db.expenseCategories[0].id, name: "", quantity: "1", unitPrice: "", cashType: "Cash" as CashType, comment: "" });
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
-  const accounts = db.accounts.filter((a) => a.cashType === f.cashType && (seesAllBranches(session) || a.responsibles.includes(session.userId)));
+  // Cash always leaves the head office account, never a branch cash desk.
+  const account = f.cashType === "Cash" ? db.accounts.find((a) => a.id === "acc0") : db.accounts.find((a) => a.cashType === "Card");
   const total = Number(f.quantity) * Number(f.unitPrice);
   return (
     <Modal
@@ -121,9 +119,10 @@ function NewExpense({ open, onClose }: { open: boolean; onClose: () => void }) {
             Bekor qilish
           </Button>
           <Button
-            disabled={!f.name || !total || !accounts.length}
+            disabled={!f.name || !total || !account}
             onClick={() => {
-              addExpense({ branchId: f.branchId, date: TODAY, categoryId: f.categoryId, name: f.name, quantity: Number(f.quantity), unitPrice: Number(f.unitPrice), cashType: f.cashType, accountId: accounts[0].id, comment: f.comment || null });
+              if (!account) return;
+              addExpense({ branchId: null, date: TODAY, categoryId: f.categoryId, name: f.name, quantity: Number(f.quantity), unitPrice: Number(f.unitPrice), cashType: f.cashType, accountId: account.id, comment: f.comment || null });
               setF({ ...f, name: "", unitPrice: "", quantity: "1", comment: "" });
               onClose();
             }}
@@ -134,20 +133,7 @@ function NewExpense({ open, onClose }: { open: boolean; onClose: () => void }) {
       }
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Filial">
-          {(id) => (
-            <Select id={id} value={f.branchId} onChange={set("branchId")}>
-              {db.branches
-                .filter((b) => scope.includes(b.id))
-                .map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-            </Select>
-          )}
-        </Field>
-        <Field label="Kategoriya">
+        <Field label="Kategoriya" className="sm:col-span-2">
           {(id) => (
             <Select id={id} value={f.categoryId} onChange={set("categoryId")}>
               {db.expenseCategories.map((c) => (
@@ -163,7 +149,7 @@ function NewExpense({ open, onClose }: { open: boolean; onClose: () => void }) {
         </Field>
         <Field label="Soni">{(id) => <Input id={id} inputMode="numeric" value={f.quantity} onChange={set("quantity")} />}</Field>
         <Field label="Narxi (soʻm)">{(id) => <Input id={id} inputMode="numeric" value={f.unitPrice} onChange={set("unitPrice")} />}</Field>
-        <Field label="Toʻlov shakli">
+        <Field label="Toʻlov shakli" hint={`Yechiladi: ${account?.name ?? "—"}`}>
           {(id) => (
             <Select id={id} value={f.cashType} onChange={set("cashType")}>
               {(["Cash", "Card"] as CashType[]).map((t) => (

@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus } from "lucide-react";
-import { addPayment, useDb } from "@/lib/data/store";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { addPayment, deletePayment, updatePayment, useDb } from "@/lib/data/store";
+import { canEditPayments, paymentCashTypes } from "@/lib/data/permissions";
 import { branchScope, contractStatus, financeIndex, lookups, seesAllBranches, studentName, THIS_MONTH, THIS_YEAR, TODAY } from "@/lib/data/calc";
-import { CASH_LABEL, type CashType } from "@/lib/data/types";
+import { CASH_LABEL, type CashType, type Payment } from "@/lib/data/types";
 import { MONTHS, date, money } from "@/lib/format";
-import { Badge, Button, Card, Field, Input, Modal, PageHeader, SearchInput, Select, Stat, Table, Td, Textarea, Th } from "@/components/ui";
+import { Badge, Button, Card, Field, IconButton, Input, Modal, PageHeader, SearchInput, Select, Stat, Table, Td, Textarea, Th } from "@/components/ui";
 
 export default function PaymentsPage() {
   const sp = Object.fromEntries(useSearchParams());
@@ -18,6 +19,10 @@ export default function PaymentsPage() {
   const [q, setQ] = useState("");
   const [month, setMonth] = useState(THIS_MONTH);
   const [adding, setAdding] = useState(sp.yangi === "1");
+  const [editing, setEditing] = useState<Payment | null>(null);
+  const [removing, setRemoving] = useState<Payment | null>(null);
+  const canAdd = paymentCashTypes(session.role).length > 0;
+  const canEdit = canEditPayments(session.role);
 
   const inMonth = db.payments.filter((p) => scope.includes(p.branchId) && p.date.startsWith(`${THIS_YEAR}-${String(month).padStart(2, "0")}`));
   const rows = inMonth
@@ -31,9 +36,11 @@ export default function PaymentsPage() {
         title="Toʻlovlar"
         subtitle="Ota-onalardan qabul qilingan toʻlovlar"
         actions={
-          <Button onClick={() => setAdding(true)}>
-            <Plus size={16} aria-hidden="true" /> Toʻlov qabul qilish
-          </Button>
+          canAdd && (
+            <Button onClick={() => setAdding(true)}>
+              <Plus size={16} aria-hidden="true" /> Toʻlov qabul qilish
+            </Button>
+          )
         }
       />
 
@@ -69,6 +76,7 @@ export default function PaymentsPage() {
               <Th>Hisob</Th>
               <Th>Chegirma</Th>
               <Th>Qabul qildi</Th>
+              {canEdit && <Th />}
             </tr>
           </thead>
           <tbody>
@@ -108,6 +116,16 @@ export default function PaymentsPage() {
                     )}
                   </Td>
                   <Td className="text-muted">{L.user.get(p.accountantId)?.fullName}</Td>
+                  {canEdit && (
+                    <Td className="text-right">
+                      <IconButton label="Tahrirlash" onClick={() => setEditing(p)}>
+                        <Pencil size={16} aria-hidden="true" />
+                      </IconButton>
+                      <IconButton label="Oʻchirish" className="hover:text-danger" onClick={() => setRemoving(p)}>
+                        <Trash2 size={16} aria-hidden="true" />
+                      </IconButton>
+                    </Td>
+                  )}
                 </tr>
               );
             })}
@@ -115,8 +133,101 @@ export default function PaymentsPage() {
         </Table>
       </Card>
 
-      <NewPayment open={adding} onClose={() => setAdding(false)} initialContract={typeof sp.shartnoma === "string" ? sp.shartnoma : undefined} />
+      <NewPayment open={adding && canAdd} onClose={() => setAdding(false)} initialContract={typeof sp.shartnoma === "string" ? sp.shartnoma : undefined} />
+      {editing && <EditPayment key={editing.id} payment={editing} onClose={() => setEditing(null)} />}
+      {removing && (
+        <Modal
+          open
+          onClose={() => setRemoving(null)}
+          title="Toʻlovni oʻchirish"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setRemoving(null)}>
+                Bekor qilish
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  deletePayment(removing.id);
+                  setRemoving(null);
+                }}
+              >
+                Oʻchirish
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm">
+            {studentName(L, L.contract.get(removing.contractId)?.studentId ?? "")}ning {date(removing.date)} sanasidagi <b className="num">{money(removing.amount)}</b> soʻmlik toʻlovi oʻchiriladi.
+            Shartnoma qarzi va hisob qoldigʻi qayta hisoblanadi.
+          </p>
+        </Modal>
+      )}
     </>
+  );
+}
+
+function EditPayment({ payment, onClose }: { payment: Payment; onClose: () => void }) {
+  const { db } = useDb();
+  const [amount, setAmount] = useState(String(payment.amount));
+  const [day, setDay] = useState(payment.date);
+  const [cashType, setCashType] = useState(payment.cashType);
+  const [accountId, setAccountId] = useState(payment.accountId);
+  const [comment, setComment] = useState(payment.comment ?? "");
+  const accounts = db.accounts.filter((a) => a.cashType === cashType);
+  const account = accounts.find((a) => a.id === accountId) ?? accounts[0];
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Toʻlovni tahrirlash"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Bekor qilish
+          </Button>
+          <Button
+            disabled={!Number(amount) || !account}
+            onClick={() => {
+              updatePayment(payment.id, { amount: Number(amount), date: day, cashType, accountId: account.id, comment: comment || null });
+              onClose();
+            }}
+          >
+            Saqlash
+          </Button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Summa (soʻm)">{(id) => <Input id={id} inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))} />}</Field>
+        <Field label="Sana">{(id) => <Input id={id} type="date" max={TODAY} value={day} onChange={(e) => setDay(e.target.value)} />}</Field>
+        <Field label="Pul shakli">
+          {(id) => (
+            <Select id={id} value={cashType} onChange={(e) => setCashType(e.target.value as CashType)}>
+              {(["Cash", "Card"] as CashType[]).map((t) => (
+                <option key={t} value={t}>
+                  {CASH_LABEL[t]}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Hisob (gʻazna)">
+          {(id) => (
+            <Select id={id} value={account?.id ?? ""} onChange={(e) => setAccountId(e.target.value)}>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Izoh" className="sm:col-span-2">
+          {(id) => <Textarea id={id} value={comment} onChange={(e) => setComment(e.target.value)} />}
+        </Field>
+      </div>
+    </Modal>
   );
 }
 
@@ -129,7 +240,8 @@ function NewPayment({ open, onClose, initialContract }: { open: boolean; onClose
   const [contractId, setContractId] = useState(initialContract ?? "");
   const [search, setSearch] = useState("");
   const [amount, setAmount] = useState("");
-  const [cashType, setCashType] = useState<CashType>("Cash");
+  const allowed = paymentCashTypes(session.role);
+  const cashType = allowed[0] ?? "Cash";
   const [discountType, setDiscountType] = useState("");
   const [discount, setDiscount] = useState("");
   const [comment, setComment] = useState("");
@@ -241,16 +353,8 @@ function NewPayment({ open, onClose, initialContract }: { open: boolean; onClose
           <Field label="Sana" hint={seesAllBranches(session) ? undefined : "Faqat bugungi sana"}>
             {(id) => <Input id={id} value={date(TODAY)} disabled />}
           </Field>
-          <Field label="Pul shakli">
-            {(id) => (
-              <Select id={id} value={cashType} onChange={(e) => setCashType(e.target.value as CashType)}>
-                {(["Cash", "Card", "Bank"] as CashType[]).map((t) => (
-                  <option key={t} value={t}>
-                    {CASH_LABEL[t]}
-                  </option>
-                ))}
-              </Select>
-            )}
+          <Field label="Pul shakli" hint={cashType === "Cash" ? "Kartani Admin kiritadi" : "Naqdni Administrator+Hisobchi kiritadi"}>
+            {(id) => <Input id={id} value={CASH_LABEL[cashType]} disabled />}
           </Field>
           <Field label="Hisob (gʻazna)" hint={myAccounts.length ? undefined : "Bu pul shaklida mas'ul hisobingiz yoʻq"}>
             {(id) => (
@@ -282,7 +386,9 @@ function NewPayment({ open, onClose, initialContract }: { open: boolean; onClose
           )}
         </div>
         {cashType !== "Cash" && <p className="rounded-lg bg-warning-soft px-3 py-2 text-[13px] text-warning">Naqdsiz toʻlov Bosh menejer yoki Admin tasdiqlagach hisobga tushadi.</p>}
-        <Field label="Izoh">{(id) => <Textarea id={id} value={comment} onChange={(e) => setComment(e.target.value)} />}</Field>
+        <Field label="Izoh" hint={cashType === "Cash" ? undefined : "Tasdiqlovchi shu izohga qarab tekshiradi"}>
+          {(id) => <Textarea id={id} value={comment} onChange={(e) => setComment(e.target.value)} placeholder={cashType === "Cash" ? "" : "Kimning kartasidan, qaysi ilova orqali, soat nechada"} />}
+        </Field>
       </div>
     </Modal>
   );

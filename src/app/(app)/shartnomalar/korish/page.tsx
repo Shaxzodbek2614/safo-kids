@@ -5,14 +5,15 @@ import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, FileText, Phone, Plus } from "lucide-react";
 import { useDb } from "@/lib/data/store";
+import { paymentCashTypes } from "@/lib/data/permissions";
 import { chargeRows, contractStatus, financeIndex, groupLabel, lookups, studentName } from "@/lib/data/calc";
 import { CASH_LABEL } from "@/lib/data/types";
 import { MONTHS, cn, date, money, phone } from "@/lib/format";
-import { Badge, Card, CardHeader, Empty, LinkButton, Stat, Table, Tabs, Td, Th } from "@/components/ui";
+import { Badge, Card, CardHeader, CertificatePreview, Empty, LinkButton, Stat, Table, Tabs, Td, Th } from "@/components/ui";
 
 export default function ContractPage() {
   const id = useSearchParams().get("id") ?? "";
-  const { db } = useDb();
+  const { db, session } = useDb();
   const L = lookups(db);
   const c = db.contracts.find((x) => x.id === id);
   const [tab, setTab] = useState<"charges" | "payments" | "attendance" | "grades">("charges");
@@ -43,9 +44,11 @@ export default function ContractPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <LinkButton href={`/tolovlar?yangi=1&shartnoma=${c.id}`}>
-            <Plus size={16} aria-hidden="true" /> Toʻlov qabul qilish
-          </LinkButton>
+          {paymentCashTypes(session.role).length > 0 && (
+            <LinkButton href={`/tolovlar?yangi=1&shartnoma=${c.id}`}>
+              <Plus size={16} aria-hidden="true" /> Toʻlov qabul qilish
+            </LinkButton>
+          )}
           <LinkButton href="#" variant="secondary">
             <FileText size={16} aria-hidden="true" /> Shartnoma PDF
           </LinkButton>
@@ -215,6 +218,12 @@ export default function ContractPage() {
             <dt className="text-muted">Guvohnoma</dt>
             <dd>{c.hasCertificate ? <Badge tone="success">Yuklangan</Badge> : <Badge tone="warning">Yoʻq</Badge>}</dd>
           </dl>
+          {c.certificate && (
+            <div className="border-t border-border p-5">
+              <p className="mb-2 text-sm font-bold">Tugʻilganlik guvohnomasi</p>
+              <CertificatePreview file={c.certificate} />
+            </div>
+          )}
           <div className="flex flex-col gap-2 border-t border-border p-5">
             {[
               [c.fatherName, "ota", c.fatherPhone],

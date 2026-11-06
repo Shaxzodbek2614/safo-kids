@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, type ComponentProps, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { cn, initials } from "@/lib/format";
+import type { FileRef } from "@/lib/data/types";
 
 // ── Buttons ──────────────────────────────────────────────────────────────
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "success";
@@ -164,6 +165,20 @@ export function Avatar({ name, className }: { name: string; className?: string }
     >
       {initials(name)}
     </span>
+  );
+}
+
+export function CertificatePreview({ file }: { file: FileRef }) {
+  return (
+    <a href={file.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl border border-border hover:border-primary">
+      {file.isImage ? (
+        // eslint-disable-next-line @next/next/no-img-element -- local object URL, nothing to optimise
+        <img src={file.url} alt={file.name} className="max-h-64 w-full bg-surface-2 object-contain" />
+      ) : (
+        <span className="block px-4 py-6 text-center text-sm font-semibold text-primary">PDF faylni ochish</span>
+      )}
+      <span className="block truncate border-t border-border px-3 py-2 text-xs text-muted">{file.name}</span>
+    </a>
   );
 }
 

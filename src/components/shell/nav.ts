@@ -27,6 +27,7 @@ export interface NavItem {
 
 const OFFICE: Role[] = ["Admin", "Bosh menejer", "Filial menejeri", "Administrator+Hisobchi", "Administrator", "Hisobchi"];
 const TOP: Role[] = ["Admin", "Bosh menejer"];
+const CASH_DESK: Role[] = ["Bosh menejer", "Filial menejeri", "Administrator+Hisobchi", "Hisobchi"];
 
 export const NAV: { title: string; items: NavItem[] }[] = [
   { title: "", items: [{ href: "/", label: "Bosh sahifa", icon: LayoutDashboard }] },
@@ -53,7 +54,7 @@ export const NAV: { title: string; items: NavItem[] }[] = [
       { href: "/tasdiqlashlar", label: "Tasdiqlashlar", icon: BadgeCheck, roles: TOP },
       { href: "/hisoblar", label: "Hisoblar", icon: Wallet, roles: OFFICE },
       { href: "/xarajatlar", label: "Xarajatlar", icon: Receipt, roles: OFFICE },
-      { href: "/pul-oqimi", label: "Pul oqimi", icon: ArrowLeftRight, roles: OFFICE },
+      { href: "/pul-oqimi", label: "Pul oqimi", icon: ArrowLeftRight, roles: CASH_DESK },
     ],
   },
   {

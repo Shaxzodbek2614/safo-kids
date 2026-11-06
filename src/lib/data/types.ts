@@ -13,6 +13,7 @@ export type Role =
   | "Ustoz"
   | "Yordamchi"
   | "Ustoz+Yordamchi"
+  | "Metodist"
   | "Boshqa";
 
 export interface Branch {
@@ -86,6 +87,12 @@ export const ADDRESSES = [
   "Bahrin",
 ];
 
+export interface FileRef {
+  name: string;
+  url: string;
+  isImage: boolean;
+}
+
 export interface LeadSource {
   id: ID;
   name: string;
@@ -105,6 +112,8 @@ export interface Lead {
   fatherPhone: string;
   motherPhone: string;
   demoDate: string | null;
+  /** tugʻilganlik guvohnomasi (metrika), required for "Oʻqishni boshladi" */
+  certificate: FileRef | null;
   createdAt: string;
   createdBy: ID;
 }
@@ -144,6 +153,7 @@ export interface Contract {
   motherPhone: string;
   address: string;
   hasCertificate: boolean;
+  certificate: FileRef | null;
   createdAt: string;
 }
 
@@ -218,7 +228,8 @@ export interface ExpenseCategory {
 
 export interface Expense {
   id: ID;
-  branchId: ID;
+  /** set on imported history only; new expenses are company-wide */
+  branchId: ID | null;
   date: string;
   categoryId: ID;
   name: string;
@@ -251,11 +262,27 @@ export interface SalaryAssignment {
   userId: ID;
   year: number;
   month: number;
-  fixed: number;
   bonus: number;
   fine: number;
-  teacherKpi: number;
   revenueKpi: number;
+}
+
+/** Set per role by Bosh menejer. KPI = sum per attended day, Belgilangan = sum per month. */
+export interface SalaryRate {
+  id: ID;
+  role: Role;
+  kind: "KPI" | "Belgilangan";
+  amount: number;
+  fromYear: number;
+  fromMonth: number;
+}
+
+export interface StaffAttendance {
+  id: ID;
+  groupId: ID;
+  userId: ID;
+  date: string;
+  status: "1" | "X";
 }
 
 export interface SalaryPayment {
@@ -265,9 +292,9 @@ export interface SalaryPayment {
   year: number;
   month: number;
   date: string;
-  type: "Fixed" | "Bonus" | "KPI";
   amount: number;
   accountId: ID;
+  comment: string | null;
 }
 
 export interface Attendance {

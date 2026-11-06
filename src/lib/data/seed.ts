@@ -25,6 +25,8 @@ import type {
   Room,
   SalaryAssignment,
   SalaryPayment,
+  SalaryRate,
+  StaffAttendance,
   Student,
   Transfer,
   User,
@@ -125,6 +127,7 @@ for (const [branchId, names] of GROUP_PLAN) {
     gNo++;
   });
 }
+addUser("Muhabbat Ergasheva", "Metodist", ["b1", "b2", "b3", "b4"]);
 addUser("Xurshida opa (oshpaz)", "Boshqa", ["b2"], 0, false);
 addUser("Ravshan aka (qorovul)", "Boshqa", ["b1"], 0, false);
 // A spare room for settings
@@ -213,6 +216,7 @@ groups.forEach((g, gi) => {
       fatherPhone: phoneNo(),
       motherPhone: phoneNo(),
       demoDate: startDate,
+      certificate: null,
       createdAt: startDate,
       createdBy: cashierOf(g.branchId).id,
     };
@@ -233,6 +237,7 @@ groups.forEach((g, gi) => {
       motherPhone: lead.motherPhone,
       address: lead.address,
       hasCertificate: chance(0.6),
+      certificate: null,
       createdAt: startDate,
     });
   }
@@ -270,6 +275,7 @@ for (let k = 0; k < 74; k++) {
     fatherPhone: phoneNo(),
     motherPhone: chance(0.6) ? phoneNo() : "",
     demoDate: status.startsWith("3") ? iso(THIS_YEAR, THIS_MONTH, int(4, 10)) : status.startsWith("4") ? created : null,
+    certificate: null,
     createdAt: created,
     createdBy: cashierOf(b.id).id,
   };
@@ -283,6 +289,7 @@ for (let k = 0; k < 74; k++) {
 export const charges: Charge[] = [];
 export const payments: Payment[] = [];
 const ym = (y: number, m: number) => y * 12 + m;
+const CARD_NOTES = ["Dadasining kartasidan, Click", "Onasining Humo kartasidan", "Payme orqali, chek guruhda", "Uzcard 8600 •• 4417 dan oʻtkazma", "Paynet orqali, 14:20 da tushgan"];
 
 for (const c of contracts) {
   if (c.type === "Grant") continue;
@@ -326,12 +333,12 @@ for (const c of contracts) {
         amount: paid,
         cashType: card ? "Card" : "Cash",
         accountId: card ? "acc5" : `acc${c.branchId.slice(1)}`,
-        accountantId: cashierOf(c.branchId).id,
+        accountantId: card ? admin.id : cashierOf(c.branchId).id,
         discountTypeId: null,
         discount: 0,
         discountStatus: null,
         nonCashStatus: card ? (current || (m === THIS_MONTH - 1 && d > 25) ? "Tasdiqlashga" : "Tasdiqlandi") : null,
-        comment: null,
+        comment: card ? CARD_NOTES[payments.length % CARD_NOTES.length] : null,
         createdAt: day,
       });
     }
@@ -411,37 +418,68 @@ for (let m = 1; m <= THIS_MONTH; m++)
       expenses.push({ id: nid("e"), branchId: b.id, date: iso(THIS_YEAR, m, int(1, 28)), categoryId: "ec6", name: "Boʻyoq va taʼmir", quantity: 1, unitPrice: int(15, 40) * 100_000, cashType: "Cash", accountId: "acc0", comment: null });
   }
 
-// ── Salaries ─────────────────────────────────────────────────────────────
+// ── Staff attendance and salaries ────────────────────────────────────────
+export const salaryRates: SalaryRate[] = (
+  [
+    ["Ustoz", "KPI", 150_000],
+    ["Yordamchi", "KPI", 85_000],
+    ["Bosh menejer", "Belgilangan", 5_000_000],
+    ["Administrator+Hisobchi", "Belgilangan", 3_200_000],
+    ["Metodist", "Belgilangan", 3_500_000],
+    ["Boshqa", "Belgilangan", 2_200_000],
+  ] as const
+).map(([role, kind, amount]) => ({ id: nid("rt"), role, kind, amount, fromYear: THIS_YEAR, fromMonth: 1 }));
+
+export const staffAttendance: StaffAttendance[] = [];
+const presentDays = new Map<string, number>();
+for (let t = Date.UTC(THIS_YEAR, 0, 1); ; t += 86_400_000) {
+  const d = new Date(t);
+  const day = d.toISOString().slice(0, 10);
+  if (day >= TODAY) break; // today is marked live in the demo
+  if (d.getUTCDay() === 0 || d.getUTCDay() === 6) continue;
+  for (const g of groups)
+    for (const userId of [g.teacherId, g.supporterId]) {
+      if (!userId) continue;
+      const status = chance(0.96) ? "1" : "X";
+      staffAttendance.push({ id: nid("sta"), groupId: g.id, userId, date: day, status });
+      if (status === "1") {
+        const key = `${userId}-${d.getUTCMonth() + 1}`;
+        presentDays.set(key, (presentDays.get(key) ?? 0) + 1);
+      }
+    }
+}
+
 export const salaryAssignments: SalaryAssignment[] = [];
 export const salaryPayments: SalaryPayment[] = [];
-const FIXED: Partial<Record<User["role"], number>> = {
-  "Bosh menejer": 5_000_000,
-  "Administrator+Hisobchi": 3_200_000,
-  Ustoz: 3_000_000,
-  Yordamchi: 1_800_000,
-  Boshqa: 2_200_000,
-};
 for (let m = 1; m <= THIS_MONTH - 1; m++)
   for (const u of users) {
-    const fixed = FIXED[u.role];
-    if (!fixed) continue;
+    const rate = salaryRates.find((r) => r.role === u.role);
+    if (!rate) continue;
     const branchId = u.branchIds[0] ?? "b2";
+    const earned = rate.kind === "KPI" ? rate.amount * (presentDays.get(`${u.id}-${m}`) ?? 0) : rate.amount;
     const bonus = chance(0.2) ? 300_000 : 0;
     const fine = chance(0.08) ? 100_000 : 0;
-    const teacherKpi = u.role === "Ustoz" ? int(2, 5) * 100_000 : 0;
-    const a: SalaryAssignment = { id: nid("sa"), branchId, userId: u.id, year: THIS_YEAR, month: m, fixed, bonus, fine, teacherKpi, revenueKpi: 0 };
-    salaryAssignments.push(a);
-    const givenShare = m <= THIS_MONTH - 2 ? 1 : chance(0.5) ? 1 : 0.5;
-    const pay = (amount: number, type: SalaryPayment["type"], day: number) =>
-      salaryPayments.push({ id: nid("sp"), branchId, userId: u.id, year: THIS_YEAR, month: m, date: iso(THIS_YEAR, Math.min(m + 1, THIS_MONTH), day), type, amount, accountId: u.role === "Yordamchi" ? "acc5" : "acc0" });
-    pay(Math.round((fixed * givenShare) / 10_000) * 10_000, "Fixed", 2);
-    if (teacherKpi + bonus > 0 && givenShare === 1) pay(teacherKpi + bonus - fine, "KPI", 2);
+    if (bonus || fine || u.id === manager.id)
+      salaryAssignments.push({ id: nid("sa"), branchId, userId: u.id, year: THIS_YEAR, month: m, bonus, fine, revenueKpi: 0 });
+    const share = m <= THIS_MONTH - 2 ? 1 : chance(0.5) ? 1 : 0.5;
+    salaryPayments.push({
+      id: nid("sp"),
+      branchId,
+      userId: u.id,
+      year: THIS_YEAR,
+      month: m,
+      date: iso(THIS_YEAR, Math.min(m + 1, THIS_MONTH), 2),
+      amount: Math.round(((earned + bonus - fine) * share) / 1_000) * 1_000,
+      accountId: u.role === "Yordamchi" ? "acc5" : "acc0",
+      comment: null,
+    });
   }
 // revenue KPI for the general manager (TZ 6.5)
 for (const a of salaryAssignments.filter((s) => s.userId === manager.id)) {
   const rev = payments.filter((p) => p.date.startsWith(`${a.year}-${pad(a.month)}`)).reduce((s, p) => s + p.amount, 0);
   a.revenueKpi = Math.round((rev * manager.kpi) / 10_000) * 10_000;
-  salaryPayments.push({ id: nid("sp"), branchId: a.branchId, userId: a.userId, year: a.year, month: a.month, date: iso(a.year, Math.min(a.month + 1, THIS_MONTH), 3), type: "KPI", amount: a.month < THIS_MONTH - 1 ? a.revenueKpi : 0, accountId: "acc0" });
+  if (a.month < THIS_MONTH - 1)
+    salaryPayments.push({ id: nid("sp"), branchId: a.branchId, userId: a.userId, year: a.year, month: a.month, date: iso(a.year, a.month + 1, 3), amount: a.revenueKpi, accountId: "acc0", comment: "Tushumdan" });
 }
 
 // ── External cash flow (creditors) ───────────────────────────────────────
@@ -467,7 +505,7 @@ export const cashFlows: CashFlow[] = [
 export const attendance: Attendance[] = [];
 export const grades: Grade[] = [];
 const schoolDays: string[] = [];
-for (let back = 40; back >= 0; back--) {
+for (let back = 70; back >= 0; back--) {
   const d = new Date(Date.UTC(THIS_YEAR, THIS_MONTH - 1, 3 - back));
   const wd = d.getUTCDay();
   if (wd === 0 || wd === 6) continue;
@@ -482,7 +520,7 @@ for (const day of schoolDays) {
     attendance.push({ id: nid("a"), groupId: c.groupId, contractId: c.id, date: day, status: chance(0.88) ? "1" : "X" });
   }
   const wd = new Date(day).getUTCDay();
-  if (wd === 5)
+  if (wd === 1 || wd === 5)
     for (const c of contracts) {
       if (c.startDate > day || (c.endDate && c.endDate < day)) continue;
       grades.push({ id: nid("gr"), groupId: c.groupId, contractId: c.id, date: day, poem: pick(marks), habit: pick(marks) });

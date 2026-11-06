@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CreditCard, Landmark, Wallet } from "lucide-react";
 import { useDb } from "@/lib/data/store";
+import { canSeeExternalFlow, canSeeInternalFlow } from "@/lib/data/permissions";
 import { accountBalance, lookups, seesAllBranches, studentName } from "@/lib/data/calc";
 import { CASH_LABEL, type CashType } from "@/lib/data/types";
 import { cn, date, money } from "@/lib/format";
@@ -22,7 +23,7 @@ export default function AccountsPage() {
     ? [
         ...db.payments.filter((p) => p.accountId === acc.id).map((p) => ({ date: p.date, label: "Toʻlov", detail: studentName(L, L.contract.get(p.contractId)?.studentId ?? ""), amount: p.amount })),
         ...db.transfers
-          .filter((t) => t.status === "Tasdiqlandi" && (t.toAccountId === acc.id || t.fromAccountId === acc.id))
+          .filter((t) => canSeeInternalFlow(session.role) && t.status === "Tasdiqlandi" && (t.toAccountId === acc.id || t.fromAccountId === acc.id))
           .map((t) => ({
             date: t.date,
             label: t.toAccountId === acc.id ? "Kiruvchi oʻtkazma" : "Chiquvchi oʻtkazma",
@@ -31,7 +32,7 @@ export default function AccountsPage() {
           })),
         ...db.expenses.filter((e) => e.accountId === acc.id).map((e) => ({ date: e.date, label: "Xarajat", detail: e.name, amount: -e.quantity * e.unitPrice })),
         ...db.salaryPayments.filter((s) => s.accountId === acc.id && s.amount).map((s) => ({ date: s.date, label: "Oylik", detail: L.user.get(s.userId)?.fullName ?? "", amount: -s.amount })),
-        ...db.cashFlows.filter((f) => f.accountId === acc.id).map((f) => ({ date: f.date, label: f.amount < 0 ? "Qarz olindi" : "Qarz qaytarildi", detail: L.creditor.get(f.creditorId)?.name ?? "", amount: -f.amount })),
+        ...db.cashFlows.filter((f) => canSeeExternalFlow(session.role) && f.accountId === acc.id).map((f) => ({ date: f.date, label: f.amount < 0 ? "Qarz olindi" : "Qarz qaytarildi", detail: L.creditor.get(f.creditorId)?.name ?? "", amount: -f.amount })),
       ]
         .sort((a, b) => b.date.localeCompare(a.date))
         .slice(0, 60)
